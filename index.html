@@ -313,13 +313,14 @@
 
   function flap(){ if(!playing){ startGame(); return; } player.vy = player.jump; if(!audioLockedAfterHit) safePlay(flapSound); }
   window.addEventListener('keydown', e=>{ if(e.code==='Space' || e.code==='ArrowUp'){ e.preventDefault(); flap(); } });
-  window.addEventListener('mousedown', flap);
-  window.addEventListener('touchstart', function(e){ e.preventDefault(); flap(); }, {passive:false});
+  //window.addEventListener('mousedown', flap);
+  //window.addEventListener('touchstart', function(e){ e.preventDefault(); flap(); }, {passive:false});
 
   function loop(){ animId = requestAnimationFrame(loop); update(); draw(); if(!playing){ cancelAnimationFrame(animId); animId = null; } }
 
   startBtn.addEventListener('click', ()=>{ startGame(); });
   pauseBtn.addEventListener('click', ()=>{ playing = false; });
+  playAgainBtn.addEventListener('click', ()=>{startGame();});
   downloadBtn.addEventListener('click', ()=>{ const blob=new Blob([document.documentElement.outerHTML],{type:'text/html'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='flappy-mal-overlays.html'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); });
 
   introStartBtn.addEventListener('click', ()=>{ // hide intro & start
