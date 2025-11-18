@@ -37,13 +37,14 @@
     <div id="introOverlay" class="overlay" style="pointer-events:auto">
       <div class="panel">
         <h1>സ്വാഗതം!</h1>
-        <p>കളിക്കാൻ 'Start' ബട്ടൺ അമർത്തുക</p>
+        <p>കളിക്കാൻ 'Start/Space' അമർത്തുക</p>
         <div style="display:flex;gap:8px;justify-content:center">
           <button id="introStart" class="play-again">Start</button>
         </div>
       </div>
     </div>
 
+    <!-- Game over overlay: will show image (gameover.png) if present, otherwise fallback -->
     <div id="gameOverOverlay" class="overlay" style="display:none;pointer-events:auto">
       <div class="panel">
         <img id="gameOverImg" class="gameover-image" src="gameover.png" alt="" onerror="this.style.display='none'">
@@ -65,6 +66,7 @@
     </div>
   </div>
 
+  <!-- Background music UI -->
   <div id="bg-music-ui">
     <label style="font-size:12px">BG:
       <input id="bgFileInput" type="file" accept="audio/*" style="display:inline-block">
@@ -245,7 +247,6 @@
   bgFileInput.addEventListener('change', ()=>{ const f = bgFileInput.files && bgFileInput.files[0]; if(!f) return; if(bgObjectURL){ URL.revokeObjectURL(bgObjectURL); bgObjectURL = null; } bgObjectURL = URL.createObjectURL(f); fetch(bgObjectURL).then(r=>r.arrayBuffer()).then(buf=>{ ensureAudioContext(); audioCtx.decodeAudioData(buf, decoded=>{ audioBuffer = decoded; if(isBgPlaying){ stopBgImmediate(); window.__ff_bg.startMusic(); } }); }).catch(err=>{ console.error('BG load failed', err); }); });
   bgPlayBtn.addEventListener('click', ()=>{ if(audioLockedAfterHit) return; if(!audioBuffer){ tryLoadDefault().catch(()=>{}); return; } ensureAudioContext(); audioCtx.resume().then(()=>{ window.__ff_bg.startMusic(); }).catch(()=>{ window.__ff_bg.startMusic(); }); });
   bgStopBtn.addEventListener('click', ()=>{ window.__ff_bg.stopMusic(); });
-  // (Unchanged section ends here)
 
   function spawnPipe(){
     const gapH = gapSize;
@@ -285,7 +286,7 @@
     pipeTimer++; if(pipeTimer > pipeInterval){ spawnPipe(); pipeTimer = 0; }
     for(let i=pipes.length-1;i>=0;i--){
       const p = pipes[i]; p.x -= pipeSpeed;
-      if(!p.passed && p.x + p.w < player.x - player.w/2){ p.passed=true; score++; document.getElementById('score').textContent = score; safePlay(flapSound, 'flap'); if(score>best){ best=score; localStorage.setItem(bestKey,''+best); document.getElementById('best').textContent = best; } }
+      if(!p.passed && p.x + p.w < player.x - player.w/2){ p.passed=true; score++; document.getElementById('score').textContent = score; safePlay(flapSound); if(score>best){ best=score; localStorage.setItem(bestKey,''+best); document.getElementById('best').textContent = best; } }
       const topRect = {x:p.x,y:0,w:p.w,h:p.gapY}; const botRect = {x:p.x,y:p.gapY+p.gapH,w:p.w,h:H-(p.gapY+p.gapH)};
       const playerRect = {x:player.x-player.w/2,y:player.y-player.h/2,w:player.w,h:player.h};
       if(rectsOverlap(topRect,playerRect) || rectsOverlap(botRect,playerRect)){
@@ -323,8 +324,7 @@
 
   function draw(){
     ctx.clearRect(0,0,W,H);
-    // 🎨 NEW BACKGROUND: If 'bg.png' is not loaded, a different, fixed blue gradient is used instead of the original sky colors.
-    if(bgImg && bgImg.complete && assetsReady.bg){ try{ ctx.drawImage(bgImg,0,0,W,H); }catch(e){} } else { const sky = ctx.createLinearGradient(0,0,0,H); sky.addColorStop(0,'#87cefa'); sky.addColorStop(1,'#00bfff'); ctx.fillStyle=sky; ctx.fillRect(0,0,W,H); ctx.fillStyle='#15424f'; for(let i=0;i<W;i+=120){ const hh=40+Math.floor((Math.sin(i*0.02+performance.now()/5000)+1)*30); ctx.fillRect(i,H-36-hh,80,hh); } }
+    if(bgImg && bgImg.complete && assetsReady.bg){ try{ ctx.drawImage(bgImg,0,0,W,H); }catch(e){} } else { const sky = ctx.createLinearGradient(0,0,0,H); sky.addColorStop(0,'#cdeeff'); sky.addColorStop(1,'#7fc7ef'); ctx.fillStyle=sky; ctx.fillRect(0,0,W,H); ctx.fillStyle='#15424f'; for(let i=0;i<W;i+=120){ const hh=40+Math.floor((Math.sin(i*0.02+performance.now()/5000)+1)*30); ctx.fillRect(i,H-36-hh,80,hh); } }
     ctx.fillStyle='rgba(255,255,255,0.92)'; for(const c of clouds){ ctx.beginPath(); ctx.ellipse(c.x,c.y,c.w/2,c.h/2,0,0,Math.PI*2); ctx.fill(); }
     for(const p of pipes){ ctx.fillStyle='#17944a'; ctx.fillRect(p.x,0,p.w,p.gapY); ctx.fillStyle='#126f36'; ctx.fillRect(p.x-2,p.gapY-12,p.w+4,12); ctx.fillStyle='#17944a'; ctx.fillRect(p.x,p.gapY+p.gapH,p.w,H-(p.gapY+p.gapH)); ctx.fillStyle='#126f36'; ctx.fillRect(p.x-2,p.gapY+p.gapH,p.w+4,12); }
     for(const c of coins) drawCoin(c.x,c.y,c.r,c.spin);
@@ -336,10 +336,10 @@
 
   function drawCoin(x,y,r,spin){ const grad=ctx.createRadialGradient(x-r*0.2,y-r*0.3,r*0.1,x,y,r); grad.addColorStop(0,'#fff9d6'); grad.addColorStop(0.4,'#ffe97b'); grad.addColorStop(1,'#f0b90f'); ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.ellipse(x-r*0.18,y-r*0.28,r*0.45,r*0.22,-0.5,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.07)'; ctx.lineWidth=1; ctx.stroke(); }
 
-  function flap(){ if(!playing){ return; } player.vy = player.jump; if(!audioLockedAfterHit) safePlay(flapSound, 'flap'); }
-  
+  function flap(){ if(!playing){ startGame(); return; } player.vy = player.jump; if(!audioLockedAfterHit) safePlay(flapSound); }
   window.addEventListener('keydown', e=>{ if(e.code==='Space' || e.code==='ArrowUp'){ e.preventDefault(); flap(); } });
-
+  window.addEventListener('mousedown', flap);
+  window.addEventListener('touchstart', function(e){ e.preventDefault(); flap(); }, {passive:false});
 
   function loop(){ animId = requestAnimationFrame(loop); update(); draw(); if(!playing){ cancelAnimationFrame(animId); animId = null; } }
 
@@ -365,7 +365,6 @@
     // reset audio locks and stop/rewind any playing sounds
     audioLockedAfterHit = false;
     safeStop(flapSound); try{ hitSound.pause(); hitSound.currentTime = 0;}catch(e){}
-    safeStop(coinSound); 
     window.__ff_bg.stopMusic && window.__ff_bg.stopMusic();
     // hide overlays
     introOverlay.style.display = 'none';
@@ -378,7 +377,8 @@
     pipeInterval = 150; pipeSpeed = 2.1; gapSize = Math.round(H*0.42);
     playing = true;
 
-    // Start BG music if possible 
+    // Start BG music if possible — this runs in the user gesture context (Start button/touch),
+    // so resume+decode will be allowed by browsers.
     if(!audioLockedAfterHit){
       ensureBgReadyAndPlay().catch(()=>{/* ignore errors silently */});
     }
