@@ -5,42 +5,45 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Peece Bird - A Paarvanam Game</title>
 <style>
-  html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:linear-gradient(#bfe9ff,#7fc7ef);display:flex;align-items:center;justify-content:center}
+  html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:linear-gradient(#141414,#0a0a0a);display:flex;align-items:center;justify-content:center}
   .wrap{width:92%;max-width:1200px;padding:10px;border-radius:12px;position:relative}
   canvas{display:block;width:100%;height:420px;border-radius:8px;box-shadow:0 8px 30px rgba(2,6,23,.12);background:#9be0ff}
   .controls{display:flex;gap:8px;align-items:center;margin-top:10px;justify-content:space-between}
   button{background:#0ea5a8;color:white;padding:10px 14px;border-radius:8px;border:none;cursor:pointer;font-weight:700}
-  .small{font-size:14px;color:#063c4a}
+  .small{font-size:14px;color:#d4d123}
   #bg-music-ui{position:fixed;right:12px;bottom:12px;background:rgba(255,255,255,0.95);padding:8px;border-radius:8px;font-family:system-ui;z-index:9999;box-shadow:0 6px 18px rgba(2,6,23,.12);display:flex;gap:8px;align-items:center}
   #bg-music-ui input{font-size:12px}
   #bg-music-ui button{background:#2563eb;padding:6px 8px;border-radius:6px;font-weight:600}
   /* overlays */
   .overlay{position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);z-index:40;pointer-events:auto}
-  .overlay .panel{background:linear-gradient(180deg,#ffffff,#f3f7fb);padding:18px;border-radius:12px;box-shadow:0 8px 40px rgba(2,6,23,0.25);text-align:center;max-width:84%;width:640px}
+  .overlay .panel{
+    /* 🎨 MODIFIED: Game Over Overlay Panel Background */
+    background:linear-gradient(180deg,#ffeded,#ffeaea); /* Light red gradient */
+    padding:18px;border-radius:12px;box-shadow:0 8px 40px rgba(2,6,23,0.25);text-align:center;max-width:84%;width:640px}
   .overlay h1{margin:0 0 8px;font-size:22px;color:#073248;font-weight:800}
   .overlay p{margin:0 0 12px;font-size:18px;color:#0b3b4a}
   .gameover-image{max-width:50%;height:auto;border-radius:8px;display:block;margin:8px auto}
   .play-again{background:#ef4444;color:white;padding:10px 14px;border-radius:8px;border:none;cursor:pointer;font-weight:700}
   @media (max-width:600px){ .overlay .panel{width:92%;padding:12px} .overlay h1{font-size:18px} .overlay p{font-size:16px} }
   #bg-music-ui { display:none !important; }
+  /* NEW BACKGROUND STYLE: a pattern or different color */
+  canvas{ background: linear-gradient(180deg, #87cefa, #00bfff); /* Different Blue Gradient */ }
 </style>
 </head>
 <body>
   <div class="wrap">
     <canvas id="game" width="900" height="420"></canvas>
 
-    <!-- Intro overlay with Malayalam intro text -->
     <div id="introOverlay" class="overlay" style="pointer-events:auto">
       <div class="panel">
         <h1>സ്വാഗതം!</h1>
-        <p>കളിക്കാൻ 'Start/Space' അമർത്തുക</p>
+        <p>കളിക്കാൻ 'Start' ബട്ടൺ അമർത്തുക</p>
         <div style="display:flex;gap:8px;justify-content:center">
           <button id="introStart" class="play-again">Start</button>
         </div>
       </div>
     </div>
 
-    <!-- Game over overlay: will show image (gameover.png) if present, otherwise fallback -->
     <div id="gameOverOverlay" class="overlay" style="display:none;pointer-events:auto">
       <div class="panel">
         <img id="gameOverImg" class="gameover-image" src="gameover.png" alt="" onerror="this.style.display='none'">
@@ -62,7 +65,6 @@
     </div>
   </div>
 
-  <!-- Background music UI -->
   <div id="bg-music-ui">
     <label style="font-size:12px">BG:
       <input id="bgFileInput" type="file" accept="audio/*" style="display:inline-block">
@@ -111,16 +113,23 @@
   // optional external assets (place these files next to index.html)
   const bgImg = new Image(); bgImg.src = 'bg.png';
   const birdImg = new Image(); birdImg.src = 'bird.png';
+  
+  // 🎵 AUDIO DEFINITIONS: Check file paths here!
   const flapSound = new Audio('flap.mp3'); flapSound.preload = 'auto';
   const hitSound  = new Audio('hit.mp3');  hitSound.preload  = 'auto';
+  const coinSound = new Audio('coin.mp3'); coinSound.preload = 'auto'; 
 
   flapSound.volume = 0.35;
+  coinSound.volume = 0.7; // Set coin sound volume
 
-  const assetsReady = { bg:false, bird:false, flap:false, hit:false };
+  const assetsReady = { bg:false, bird:false, flap:false, hit:false, coin:false };
   bgImg.onload = ()=>assetsReady.bg = true; bgImg.onerror = ()=>assetsReady.bg = false;
   birdImg.onload = ()=>assetsReady.bird = true; birdImg.onerror = ()=>assetsReady.bird = false;
-  flapSound.addEventListener('canplaythrough', ()=>assetsReady.flap = true); flapSound.addEventListener('error', ()=>assetsReady.flap = false);
-  hitSound.addEventListener('canplaythrough', ()=>assetsReady.hit = true); hitSound.addEventListener('error', ()=>assetsReady.hit = false);
+  
+  // 🔊 Add event listeners to confirm audio is ready
+  flapSound.addEventListener('canplaythrough', ()=>assetsReady.flap = true); flapSound.addEventListener('error', (e)=>{console.error('Flap audio error:', e); assetsReady.flap = false;});
+  hitSound.addEventListener('canplaythrough', ()=>assetsReady.hit = true); hitSound.addEventListener('error', (e)=>{console.error('Hit audio error:', e); assetsReady.hit = false;});
+  coinSound.addEventListener('canplaythrough', ()=>assetsReady.coin = true); coinSound.addEventListener('error', (e)=>{console.error('Coin audio error:', e); assetsReady.coin = false;});
 
   let audioLockedAfterHit = false;
 
@@ -128,9 +137,14 @@
   function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
   function rectsOverlap(a,b){ return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
 
-  function safePlay(audio){
+  // 🔊 MODIFIED safePlay: Checks assetReady before playing
+  function safePlay(audio, assetName){
     if(!audio) return;
     if(audioLockedAfterHit) return;
+    if(assetName && !assetsReady[assetName]){
+        // console.log(`Audio asset ${assetName} not ready.`);
+        return; 
+    }
     try{ audio.currentTime = 0; audio.play().catch(()=>{}); }catch(e){}
   }
   function safeStop(audio){
@@ -138,7 +152,7 @@
     try{ audio.pause(); audio.currentTime = 0; }catch(e){}
   }
 
-  // Background music WebAudio
+  // Background music WebAudio (Unchanged section starts here)
   let audioCtx = null, bgSource = null, gainNode = null, lowpass = null, bassShelf = null, audioBuffer = null, isBgPlaying = false, bgObjectURL = null;
   const bgFileInput = document.getElementById('bgFileInput'), bgPlayBtn = document.getElementById('bgPlayBtn'), bgStopBtn = document.getElementById('bgStopBtn');
   function ensureAudioContext(){ if(audioCtx) return; audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
@@ -231,6 +245,7 @@
   bgFileInput.addEventListener('change', ()=>{ const f = bgFileInput.files && bgFileInput.files[0]; if(!f) return; if(bgObjectURL){ URL.revokeObjectURL(bgObjectURL); bgObjectURL = null; } bgObjectURL = URL.createObjectURL(f); fetch(bgObjectURL).then(r=>r.arrayBuffer()).then(buf=>{ ensureAudioContext(); audioCtx.decodeAudioData(buf, decoded=>{ audioBuffer = decoded; if(isBgPlaying){ stopBgImmediate(); window.__ff_bg.startMusic(); } }); }).catch(err=>{ console.error('BG load failed', err); }); });
   bgPlayBtn.addEventListener('click', ()=>{ if(audioLockedAfterHit) return; if(!audioBuffer){ tryLoadDefault().catch(()=>{}); return; } ensureAudioContext(); audioCtx.resume().then(()=>{ window.__ff_bg.startMusic(); }).catch(()=>{ window.__ff_bg.startMusic(); }); });
   bgStopBtn.addEventListener('click', ()=>{ window.__ff_bg.stopMusic(); });
+  // (Unchanged section ends here)
 
   function spawnPipe(){
     const gapH = gapSize;
@@ -242,7 +257,7 @@
     if(Math.random() < 0.85){
       const cx = W + Math.max(120, START_X + 160) + w/2;
       const cy = gapY + gapH*0.5 + rand(-20,20);
-      coins.push({ x:cx, y:cy, r:14, vy:-0.2 + Math.random()*0.4, spin:Math.random()*Math.PI*2 });
+      coins.push({ x:cx, y:cy, r:10, vy:-0.2 + Math.random()*0.4, spin:Math.random()*Math.PI*2 });
     }
   }
 
@@ -270,7 +285,7 @@
     pipeTimer++; if(pipeTimer > pipeInterval){ spawnPipe(); pipeTimer = 0; }
     for(let i=pipes.length-1;i>=0;i--){
       const p = pipes[i]; p.x -= pipeSpeed;
-      if(!p.passed && p.x + p.w < player.x - player.w/2){ p.passed=true; score++; document.getElementById('score').textContent = score; safePlay(flapSound); if(score>best){ best=score; localStorage.setItem(bestKey,''+best); document.getElementById('best').textContent = best; } }
+      if(!p.passed && p.x + p.w < player.x - player.w/2){ p.passed=true; score++; document.getElementById('score').textContent = score; safePlay(flapSound, 'flap'); if(score>best){ best=score; localStorage.setItem(bestKey,''+best); document.getElementById('best').textContent = best; } }
       const topRect = {x:p.x,y:0,w:p.w,h:p.gapY}; const botRect = {x:p.x,y:p.gapY+p.gapH,w:p.w,h:H-(p.gapY+p.gapH)};
       const playerRect = {x:player.x-player.w/2,y:player.y-player.h/2,w:player.w,h:player.h};
       if(rectsOverlap(topRect,playerRect) || rectsOverlap(botRect,playerRect)){
@@ -289,7 +304,16 @@
     for(let i=coins.length-1;i>=0;i--){
       const c=coins[i]; c.x -= pipeSpeed; c.y += Math.sin((performance.now()/350)+c.spin)*0.18 + c.vy; c.spin+=0.06;
       const circ={x:c.x,y:c.y,r:c.r}; const playerRect={x:player.x-player.w/2,y:player.y-player.h/2,w:player.w,h:player.h};
-      if(circleRectCollides(circ,playerRect)){ coins.splice(i,1); coinsCollected++; document.getElementById('coins').textContent = coinsCollected; score++; document.getElementById('score').textContent = score; safePlay(flapSound); if(score>best){ best=score; localStorage.setItem(bestKey,''+best); document.getElementById('best').textContent = best; } continue; }
+      if(circleRectCollides(circ,playerRect)){ 
+        coins.splice(i,1); 
+        coinsCollected++; 
+        document.getElementById('coins').textContent = coinsCollected; 
+        score++; 
+        document.getElementById('score').textContent = score; 
+        safePlay(coinSound, 'coin'); // 🔊 MODIFIED: Playing coin sound with asset check
+        if(score>best){ best=score; localStorage.setItem(bestKey,''+best); document.getElementById('best').textContent = best; } 
+        continue; 
+      }
       if(c.x + c.r < -80) coins.splice(i,1);
     }
     for(const c of clouds){ c.x += c.spd; if(c.x - c.w > W) c.x = -c.w - Math.random()*180; }
@@ -299,7 +323,8 @@
 
   function draw(){
     ctx.clearRect(0,0,W,H);
-    if(bgImg && bgImg.complete && assetsReady.bg){ try{ ctx.drawImage(bgImg,0,0,W,H); }catch(e){} } else { const sky = ctx.createLinearGradient(0,0,0,H); sky.addColorStop(0,'#cdeeff'); sky.addColorStop(1,'#7fc7ef'); ctx.fillStyle=sky; ctx.fillRect(0,0,W,H); ctx.fillStyle='#15424f'; for(let i=0;i<W;i+=120){ const hh=40+Math.floor((Math.sin(i*0.02+performance.now()/5000)+1)*30); ctx.fillRect(i,H-36-hh,80,hh); } }
+    // 🎨 NEW BACKGROUND: If 'bg.png' is not loaded, a different, fixed blue gradient is used instead of the original sky colors.
+    if(bgImg && bgImg.complete && assetsReady.bg){ try{ ctx.drawImage(bgImg,0,0,W,H); }catch(e){} } else { const sky = ctx.createLinearGradient(0,0,0,H); sky.addColorStop(0,'#87cefa'); sky.addColorStop(1,'#00bfff'); ctx.fillStyle=sky; ctx.fillRect(0,0,W,H); ctx.fillStyle='#15424f'; for(let i=0;i<W;i+=120){ const hh=40+Math.floor((Math.sin(i*0.02+performance.now()/5000)+1)*30); ctx.fillRect(i,H-36-hh,80,hh); } }
     ctx.fillStyle='rgba(255,255,255,0.92)'; for(const c of clouds){ ctx.beginPath(); ctx.ellipse(c.x,c.y,c.w/2,c.h/2,0,0,Math.PI*2); ctx.fill(); }
     for(const p of pipes){ ctx.fillStyle='#17944a'; ctx.fillRect(p.x,0,p.w,p.gapY); ctx.fillStyle='#126f36'; ctx.fillRect(p.x-2,p.gapY-12,p.w+4,12); ctx.fillStyle='#17944a'; ctx.fillRect(p.x,p.gapY+p.gapH,p.w,H-(p.gapY+p.gapH)); ctx.fillStyle='#126f36'; ctx.fillRect(p.x-2,p.gapY+p.gapH,p.w+4,12); }
     for(const c of coins) drawCoin(c.x,c.y,c.r,c.spin);
@@ -311,10 +336,10 @@
 
   function drawCoin(x,y,r,spin){ const grad=ctx.createRadialGradient(x-r*0.2,y-r*0.3,r*0.1,x,y,r); grad.addColorStop(0,'#fff9d6'); grad.addColorStop(0.4,'#ffe97b'); grad.addColorStop(1,'#f0b90f'); ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.ellipse(x-r*0.18,y-r*0.28,r*0.45,r*0.22,-0.5,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.07)'; ctx.lineWidth=1; ctx.stroke(); }
 
-  function flap(){ if(!playing){ startGame(); return; } player.vy = player.jump; if(!audioLockedAfterHit) safePlay(flapSound); }
+  function flap(){ if(!playing){ return; } player.vy = player.jump; if(!audioLockedAfterHit) safePlay(flapSound, 'flap'); }
+  
   window.addEventListener('keydown', e=>{ if(e.code==='Space' || e.code==='ArrowUp'){ e.preventDefault(); flap(); } });
-  window.addEventListener('mousedown', flap);
-  window.addEventListener('touchstart', function(e){ e.preventDefault(); flap(); }, {passive:false});
+
 
   function loop(){ animId = requestAnimationFrame(loop); update(); draw(); if(!playing){ cancelAnimationFrame(animId); animId = null; } }
 
@@ -340,6 +365,7 @@
     // reset audio locks and stop/rewind any playing sounds
     audioLockedAfterHit = false;
     safeStop(flapSound); try{ hitSound.pause(); hitSound.currentTime = 0;}catch(e){}
+    safeStop(coinSound); 
     window.__ff_bg.stopMusic && window.__ff_bg.stopMusic();
     // hide overlays
     introOverlay.style.display = 'none';
@@ -352,8 +378,7 @@
     pipeInterval = 150; pipeSpeed = 2.1; gapSize = Math.round(H*0.42);
     playing = true;
 
-    // Start BG music if possible — this runs in the user gesture context (Start button/touch),
-    // so resume+decode will be allowed by browsers.
+    // Start BG music if possible 
     if(!audioLockedAfterHit){
       ensureBgReadyAndPlay().catch(()=>{/* ignore errors silently */});
     }
