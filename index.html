@@ -10,10 +10,10 @@
   canvas{display:block;width:100%;height:420px;border-radius:8px;box-shadow:0 8px 30px rgba(2,6,23,.12);background:#9be0ff; touch-action:none; -ms-touch-action:none;}
   .controls{display:flex;gap:8px;align-items:center;margin-top:10px;justify-content:space-between}
   #start,
-#pause,
-#download {
-    display: none !important;
-}
+  #pause,
+  #download {
+      display: none !important;
+  }
   button{background:#0ea5a8;color:white;padding:10px 14px;border-radius:8px;border:none;cursor:pointer;font-weight:700}
   .small{font-size:14px;color:#d4d123}
   #bg-music-ui{position:fixed;right:12px;bottom:12px;background:rgba(255,255,255,0.95);padding:8px;border-radius:8px;font-family:system-ui;z-index:9999;box-shadow:0 6px 18px rgba(2,6,23,.12);display:flex;gap:8px;align-items:center}
@@ -22,10 +22,16 @@
   /* overlays */
   .overlay{position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);z-index:40;pointer-events:auto}
   .overlay .panel{
-    background:linear-gradient(180deg,#ffeded,#ffeaea);
-    padding:18px;border-radius:12px;box-shadow:0 8px 40px rgba(2,6,23,0.25);text-align:center;max-width:84%;width:640px}
-  .overlay h1{margin:0 0 8px;font-size:22px;color:#073248;font-weight:800}
-  .overlay p{margin:0 0 12px;font-size:18px;color:#0b3b4a}
+    background: #000; /* pure black */
+    padding:18px;
+    border-radius:12px;
+    box-shadow:0 8px 40px rgba(2,6,23,0.25);
+    text-align:center;
+    max-width:84%;
+    width:640px;
+  }
+  .overlay h1{margin:0 0 8px;font-size:22px;color:#ffffff;font-weight:800}
+  .overlay p{margin:0 0 12px;font-size:18px;color:#ffffff}
   .gameover-image{max-width:50%;height:auto;border-radius:8px;display:block;margin:8px auto}
   .play-again{background:#ef4444;color:white;padding:10px 14px;border-radius:8px;border:none;cursor:pointer;font-weight:700}
   @media (max-width:600px){ .overlay .panel{width:92%;padding:12px} .overlay h1{font-size:18px} .overlay p{font-size:16px} }
@@ -219,6 +225,44 @@
     }));
   }
 
+  // Mobile unlock helper: resume audio context, play a tiny silent buffer, then decode/play bg buffer
+  function unlockAudioContextAndPlayBg(){
+    try {
+      ensureAudioContext();
+    } catch (err) {
+      return Promise.reject(err);
+    }
+
+    const resumePromise = (audioCtx.state === 'suspended') ? audioCtx.resume().catch(()=>{}) : Promise.resolve();
+
+    return resumePromise.then(() => {
+      // play a tiny silent buffer to unlock audio on strict browsers (iOS)
+      try {
+        const buffer = audioCtx.createBuffer(1, 1, audioCtx.sampleRate || 44100);
+        const src = audioCtx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(audioCtx.destination);
+        src.start(0);
+        try { src.stop(0); } catch(e){}
+      } catch (e) {
+        // ignore
+      }
+
+      // If already decoded, play; otherwise decode now (user gesture)
+      if (audioBuffer) {
+        try { playBufferLooped(audioBuffer, { playbackRate: 0.88 }); } catch(e){}
+        return Promise.resolve();
+      }
+
+      // decode the default bg file (in user gesture)
+      return tryLoadDefault().then(()=>{
+        if (audioBuffer) {
+          try { playBufferLooped(audioBuffer, { playbackRate: 0.88 }); } catch(e){}
+        }
+      }).catch(()=>{ /* ignore */ });
+    });
+  }
+
   // Start a best-effort early load (will likely fail on mobile until user gesture)
   tryLoadDefault().catch(()=>{ /* ignore early load failures */ });
 
@@ -388,18 +432,9 @@
       // ignore errors
     }
 
-    // Start BG music if possible — doing this inside the user gesture improves success rate on mobile
+    // Start BG music if possible — using the unlock helper (best chance on mobile)
     if(!audioLockedAfterHit){
-      if(audioBuffer){
-        try{ window.__ff_bg.startMusic(); }catch(e){}
-      } else {
-        // Load default now (in gesture)
-        tryLoadDefault().then(()=>{
-          if(audioBuffer){
-            try{ window.__ff_bg.startMusic(); }catch(e){}
-          }
-        }).catch(()=>{/* ignore */});
-      }
+      unlockAudioContextAndPlayBg().catch(()=>{ /* fail silently */ });
     }
     // ===== End audio handling =====
 
