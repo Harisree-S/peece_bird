@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Flappy Friends — Malayalam Intro & Gameover</title>
+<title>Peece Bird - A Paarvanam Game</title>
 <style>
   html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:linear-gradient(#bfe9ff,#7fc7ef);display:flex;align-items:center;justify-content:center}
   .wrap{width:92%;max-width:1200px;padding:10px;border-radius:12px;position:relative}
@@ -22,6 +22,7 @@
   .gameover-image{max-width:50%;height:auto;border-radius:8px;display:block;margin:8px auto}
   .play-again{background:#ef4444;color:white;padding:10px 14px;border-radius:8px;border:none;cursor:pointer;font-weight:700}
   @media (max-width:600px){ .overlay .panel{width:92%;padding:12px} .overlay h1{font-size:18px} .overlay p{font-size:16px} }
+  #bg-music-ui { display:none !important; }
 </style>
 </head>
 <body>
@@ -70,6 +71,7 @@
     <button id="bgStopBtn">Stop</button>
     <div id="bg-note">Low-voice effect</div>
   </div>
+
 <script>
 (function(){
   const canvas = document.getElementById('game');
@@ -140,6 +142,7 @@
   let audioCtx = null, bgSource = null, gainNode = null, lowpass = null, bassShelf = null, audioBuffer = null, isBgPlaying = false, bgObjectURL = null;
   const bgFileInput = document.getElementById('bgFileInput'), bgPlayBtn = document.getElementById('bgPlayBtn'), bgStopBtn = document.getElementById('bgStopBtn');
   function ensureAudioContext(){ if(audioCtx) return; audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+
   function buildAudioNodes(){
     if(!audioCtx) ensureAudioContext();
     if(bgSource){ try{ bgSource.stop(); }catch(e){} bgSource.disconnect(); bgSource = null; }
@@ -160,11 +163,73 @@
     isBgPlaying = true;
   }
   function stopBgImmediate(){ if(bgSource){ try{ bgSource.stop(0); }catch(e){} bgSource.disconnect(); bgSource=null; } isBgPlaying=false; }
-  function tryLoadDefault(){ fetch('bg_music.mp3').then(r=>{ if(!r.ok) throw new Error('no file'); return r.arrayBuffer(); }).then(buf=>{ ensureAudioContext(); audioCtx.decodeAudioData(buf, decoded=>{ audioBuffer = decoded; }); }).catch(()=>{}); }
-  tryLoadDefault();
-  window.__ff_bg = { startMusic:function(){ if(audioLockedAfterHit) return; if(!audioBuffer) return; if(audioCtx && audioCtx.state==='suspended') audioCtx.resume().catch(()=>{}); playBufferLooped(audioBuffer,{playbackRate:0.88}); }, stopMusic:function(){ stopBgImmediate(); }, isPlaying:()=>isBgPlaying };
+
+  // load default bg music, return a promise that resolves when audioBuffer is ready
+  function tryLoadDefault(){
+    return fetch('bg_music.mp3').then(r=>{
+      if(!r.ok) throw new Error('no file');
+      return r.arrayBuffer();
+    }).then(arrayBuf=>{
+      ensureAudioContext();
+      // return a promise that resolves when decode finishes
+      return new Promise((resolve, reject) => {
+        // decodeAudioData may accept either callback or return a promise depending on browser; use callback form
+        audioCtx.decodeAudioData(arrayBuf, decoded=>{
+          audioBuffer = decoded;
+          resolve(decoded);
+        }, err=>{
+          console.warn('decodeAudioData failed', err);
+          reject(err);
+        });
+      });
+    }).catch(err=>{
+      console.warn('tryLoadDefault failed:', err);
+      return Promise.reject(err);
+    });
+  }
+
+  // Ensure audio context is resumed and the buffer exists, then start looped playback.
+  // Returns a Promise that resolves when playing or rejects if cannot.
+  function ensureBgReadyAndPlay(){
+    if(audioLockedAfterHit) return Promise.reject('audio locked after hit');
+
+    ensureAudioContext();
+
+    // Make sure audioCtx is running — many browsers block until user gesture; resume() is safe to call.
+    const resumePromise = (audioCtx.state === 'suspended') ? audioCtx.resume().catch(()=>{}) : Promise.resolve();
+
+    // If audioBuffer already decoded, resume and start
+    if(audioBuffer){
+      return resumePromise.then(()=>{ playBufferLooped(audioBuffer,{playbackRate:0.88}); return Promise.resolve(); });
+    }
+
+    // otherwise, try to load default. Since this function is called from a user gesture (Start button),
+    // the fetch+decode will be allowed to play once decoded.
+    return resumePromise.then(()=>{
+      return tryLoadDefault().then(()=>{
+        if(audioBuffer){
+          playBufferLooped(audioBuffer,{playbackRate:0.88});
+        } else {
+          throw new Error('no audioBuffer after decode');
+        }
+      });
+    });
+  }
+
+  // attempt to load default early (best-effort)
+  tryLoadDefault().catch(()=>{ /* ignore early load failures; will retry on user gesture */ });
+
+  window.__ff_bg = {
+    startMusic:function(){ 
+      // prefer ensureBgReadyAndPlay which handles resume+decode
+      ensureBgReadyAndPlay().catch(()=>{ /* ignore errors */ }); 
+    },
+    stopMusic:function(){ stopBgImmediate(); },
+    isPlaying:()=>isBgPlaying
+  };
+
   bgFileInput.addEventListener('change', ()=>{ const f = bgFileInput.files && bgFileInput.files[0]; if(!f) return; if(bgObjectURL){ URL.revokeObjectURL(bgObjectURL); bgObjectURL = null; } bgObjectURL = URL.createObjectURL(f); fetch(bgObjectURL).then(r=>r.arrayBuffer()).then(buf=>{ ensureAudioContext(); audioCtx.decodeAudioData(buf, decoded=>{ audioBuffer = decoded; if(isBgPlaying){ stopBgImmediate(); window.__ff_bg.startMusic(); } }); }).catch(err=>{ console.error('BG load failed', err); }); });
-  bgPlayBtn.addEventListener('click', ()=>{ if(audioLockedAfterHit) return; if(!audioBuffer){ tryLoadDefault(); return; } ensureAudioContext(); audioCtx.resume().then(()=>{ window.__ff_bg.startMusic(); }).catch(()=>{ window.__ff_bg.startMusic(); }); });
+  bgPlayBtn.addEventListener('click', ()=>{ if(audioLockedAfterHit) return; if(!audioBuffer){ tryLoadDefault().catch(()=>{}); return; } ensureAudioContext(); audioCtx.resume().then(()=>{ window.__ff_bg.startMusic(); }).catch(()=>{ window.__ff_bg.startMusic(); }); });
   bgStopBtn.addEventListener('click', ()=>{ window.__ff_bg.stopMusic(); });
 
   function spawnPipe(){
@@ -194,7 +259,6 @@
     player.vy += player.gravity; player.y += player.vy;
     if(player.y + player.h/2 >= H){
       playing = false;
-      // attempt hit then lock & stop
       try{ hitSound.currentTime = 0; hitSound.play().catch(()=>{}); }catch(e){} 
       safeStop(flapSound);
       window.__ff_bg.stopMusic();
@@ -263,22 +327,14 @@
     startGame();
   });
 
-  playAgainBtn.addEventListener('click', ()=>{
-    hideGameOverOverlay();
-    startGame();
-  });
+  playAgainBtn.addEventListener('click', ()=>{ hideGameOverOverlay(); startGame(); });
 
   function showGameOverOverlay(){
     // set Malayalam game over text with current score
     gameOverScore.textContent = 'നിങ്ങളുടെ സ്കോർ: ' + score;
-    // if gameover image exists (img element will show), good — otherwise it will be hidden by onerror
     gameOverOverlay.style.display = 'flex';
   }
   function hideGameOverOverlay(){ gameOverOverlay.style.display = 'none'; }
-
-  // Background music UI wiring (already defined above) reused:
-  // ... (listeners for bgFileInput/bgPlayBtn/bgStopBtn already set earlier)
-  // (we already wired them at declaration time)
 
   function startGame(){
     // reset audio locks and stop/rewind any playing sounds
@@ -295,7 +351,13 @@
     player.x = START_X; player.y = H/2; player.vy = 0;
     pipeInterval = 150; pipeSpeed = 2.1; gapSize = Math.round(H*0.42);
     playing = true;
-    if(!audioLockedAfterHit){ window.__ff_bg.startMusic && window.__ff_bg.startMusic(); }
+
+    // Start BG music if possible — this runs in the user gesture context (Start button/touch),
+    // so resume+decode will be allowed by browsers.
+    if(!audioLockedAfterHit){
+      ensureBgReadyAndPlay().catch(()=>{/* ignore errors silently */});
+    }
+
     if(!animId) loop();
   }
 
