@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Flappy Friends — Malayalam Intro & Gameover</title>
+<style>
+  html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:linear-gradient(#bfe9ff,#7fc7ef);display:flex;align-items:center;justify-content:center}
+  .wrap{width:92%;max-width:1200px;padding:10px;border-radius:12px;position:relative}
+  canvas{display:block;width:100%;height:420px;border-radius:8px;box-shadow:0 8px 30px rgba(2,6,23,.12);background:#9be0ff}
+  .controls{display:flex;gap:8px;align-items:center;margin-top:10px;justify-content:space-between}
+  button{background:#0ea5a8;color:white;padding:10px 14px;border-radius:8px;border:none;cursor:pointer;font-weight:700}
+  .small{font-size:14px;color:#063c4a}
+  #bg-music-ui{position:fixed;right:12px;bottom:12px;background:rgba(255,255,255,0.95);padding:8px;border-radius:8px;font-family:system-ui;z-index:9999;box-shadow:0 6px 18px rgba(2,6,23,.12);display:flex;gap:8px;align-items:center}
+  #bg-music-ui input{font-size:12px}
+  #bg-music-ui button{background:#2563eb;padding:6px 8px;border-radius:6px;font-weight:600}
+  /* overlays */
+  .overlay{position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);z-index:40;pointer-events:auto}
+  .overlay .panel{background:linear-gradient(180deg,#ffffff,#f3f7fb);padding:18px;border-radius:12px;box-shadow:0 8px 40px rgba(2,6,23,0.25);text-align:center;max-width:84%;width:640px}
+  .overlay h1{margin:0 0 8px;font-size:22px;color:#073248;font-weight:800}
+  .overlay p{margin:0 0 12px;font-size:18px;color:#0b3b4a}
+  .gameover-image{max-width:50%;height:auto;border-radius:8px;display:block;margin:8px auto}
+  .play-again{background:#ef4444;color:white;padding:10px 14px;border-radius:8px;border:none;cursor:pointer;font-weight:700}
+  @media (max-width:600px){ .overlay .panel{width:92%;padding:12px} .overlay h1{font-size:18px} .overlay p{font-size:16px} }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="game" width="900" height="420"></canvas>
+
+    <!-- Intro overlay with Malayalam intro text -->
+    <div id="introOverlay" class="overlay" style="pointer-events:auto">
+      <div class="panel">
+        <h1>സ്വാഗതം!</h1>
+        <p>കളിക്കാൻ 'Start/Space' അമർത്തുക</p>
+        <div style="display:flex;gap:8px;justify-content:center">
+          <button id="introStart" class="play-again">Start</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game over overlay: will show image (gameover.png) if present, otherwise fallback -->
+    <div id="gameOverOverlay" class="overlay" style="display:none;pointer-events:auto">
+      <div class="panel">
+        <img id="gameOverImg" class="gameover-image" src="gameover.png" alt="" onerror="this.style.display='none'">
+        <h1 id="gameOverTitle">നീ തീര്‍ന്നെടാ തീര്‍ന്നു!</h1>
+        <p id="gameOverScore">നിങ്ങളുടെ സ്കോർ: 0</p>
+        <div style="display:flex;gap:8px;justify-content:center">
+          <button id="playAgainBtn" class="play-again">വീണ്ടും കളിക്കുക</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls" style="position:relative;z-index:10;margin-top:12px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="start">Start</button>
+        <button id="pause">Pause</button>
+        <button id="download">Download</button>
+      </div>
+      <div class="small">Score: <span id="score">0</span> — Coins: <span id="coins">0</span> — Best: <span id="best">0</span></div>
+    </div>
+  </div>
+
+  <!-- Background music UI -->
+  <div id="bg-music-ui">
+    <label style="font-size:12px">BG:
+      <input id="bgFileInput" type="file" accept="audio/*" style="display:inline-block">
+    </label>
+    <button id="bgPlayBtn">Play</button>
+    <button id="bgStopBtn">Stop</button>
+    <div id="bg-note">Low-voice effect</div>
+  </div>
+<script>
+(function(){
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const DPR = Math.max(1, window.devicePixelRatio || 1);
+  let W = canvas.width, H = canvas.height;
+  function resize(){ const rect = canvas.getBoundingClientRect(); canvas.width = Math.max(640, Math.floor(rect.width * DPR)); canvas.height = Math.max(360, Math.floor(rect.height * DPR)); ctx.setTransform(DPR,0,0,DPR,0,0); W = canvas.width / DPR; H = canvas.height / DPR; }
+  window.addEventListener('resize', ()=>{ resize(); draw(); });
+  resize();
+
+  // UI overlays
+  const introOverlay = document.getElementById('introOverlay');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+  const gameOverImg = document.getElementById('gameOverImg');
+  const gameOverScore = document.getElementById('gameOverScore');
+  const startBtn = document.getElementById('start');
+  const pauseBtn = document.getElementById('pause');
+  const downloadBtn = document.getElementById('download');
+  const introStartBtn = document.getElementById('introStart');
+  const playAgainBtn = document.getElementById('playAgainBtn');
+
+  let animId = null;
+  let playing = false;
+  let score = 0;
+  let coinsCollected = 0;
+  const bestKey = 'ff_wide_best_v3';
+  let best = parseInt(localStorage.getItem(bestKey)||'0',10) || 0;
+  document.getElementById('best').textContent = best;
+
+  const START_X = 60;
+  const player = { x: START_X, y: H/2, w:90, h:70, vy:0, gravity:0.22, jump:-5.2 };
+  let pipes = [], coins = [], pipeTimer = 0;
+  let pipeInterval = 150, pipeSpeed = 2.1, gapSize = Math.round(H*0.42);
+
+  let clouds = [{x:-120,y:60,w:180,h:60,spd:0.3},{x:340,y:80,w:140,h:50,spd:0.22},{x:700,y:40,w:220,h:72,spd:0.36}];
+
+  // optional external assets (place these files next to index.html)
+  const bgImg = new Image(); bgImg.src = 'bg.png';
+  const birdImg = new Image(); birdImg.src = 'bird.png';
+  const flapSound = new Audio('flap.mp3'); flapSound.preload = 'auto';
+  const hitSound  = new Audio('hit.mp3');  hitSound.preload  = 'auto';
+
+  flapSound.volume = 0.35;
+
+  const assetsReady = { bg:false, bird:false, flap:false, hit:false };
+  bgImg.onload = ()=>assetsReady.bg = true; bgImg.onerror = ()=>assetsReady.bg = false;
+  birdImg.onload = ()=>assetsReady.bird = true; birdImg.onerror = ()=>assetsReady.bird = false;
+  flapSound.addEventListener('canplaythrough', ()=>assetsReady.flap = true); flapSound.addEventListener('error', ()=>assetsReady.flap = false);
+  hitSound.addEventListener('canplaythrough', ()=>assetsReady.hit = true); hitSound.addEventListener('error', ()=>assetsReady.hit = false);
+
+  let audioLockedAfterHit = false;
+
+  function rand(a,b){ return a + Math.random()*(b-a); }
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function rectsOverlap(a,b){ return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+
+  function safePlay(audio){
+    if(!audio) return;
+    if(audioLockedAfterHit) return;
+    try{ audio.currentTime = 0; audio.play().catch(()=>{}); }catch(e){}
+  }
+  function safeStop(audio){
+    if(!audio) return;
+    try{ audio.pause(); audio.currentTime = 0; }catch(e){}
+  }
+
+  // Background music WebAudio
+  let audioCtx = null, bgSource = null, gainNode = null, lowpass = null, bassShelf = null, audioBuffer = null, isBgPlaying = false, bgObjectURL = null;
+  const bgFileInput = document.getElementById('bgFileInput'), bgPlayBtn = document.getElementById('bgPlayBtn'), bgStopBtn = document.getElementById('bgStopBtn');
+  function ensureAudioContext(){ if(audioCtx) return; audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+  function buildAudioNodes(){
+    if(!audioCtx) ensureAudioContext();
+    if(bgSource){ try{ bgSource.stop(); }catch(e){} bgSource.disconnect(); bgSource = null; }
+    gainNode = audioCtx.createGain(); gainNode.gain.value = 0.38;
+    lowpass = audioCtx.createBiquadFilter(); lowpass.type = 'lowpass'; lowpass.frequency.value = 1200;
+    bassShelf = audioCtx.createBiquadFilter(); bassShelf.type = 'lowshelf'; bassShelf.frequency.value = 200; bassShelf.gain.value = 4;
+    bassShelf.connect(gainNode); lowpass.connect(bassShelf); gainNode.connect(audioCtx.destination);
+  }
+  function playBufferLooped(buf, opts={playbackRate:0.9}){
+    if(!audioCtx) ensureAudioContext();
+    buildAudioNodes();
+    bgSource = audioCtx.createBufferSource();
+    bgSource.buffer = buf;
+    bgSource.loop = true;
+    bgSource.playbackRate.value = opts.playbackRate || 0.9;
+    bgSource.connect(lowpass);
+    bgSource.start(0);
+    isBgPlaying = true;
+  }
+  function stopBgImmediate(){ if(bgSource){ try{ bgSource.stop(0); }catch(e){} bgSource.disconnect(); bgSource=null; } isBgPlaying=false; }
+  function tryLoadDefault(){ fetch('bg_music.mp3').then(r=>{ if(!r.ok) throw new Error('no file'); return r.arrayBuffer(); }).then(buf=>{ ensureAudioContext(); audioCtx.decodeAudioData(buf, decoded=>{ audioBuffer = decoded; }); }).catch(()=>{}); }
+  tryLoadDefault();
+  window.__ff_bg = { startMusic:function(){ if(audioLockedAfterHit) return; if(!audioBuffer) return; if(audioCtx && audioCtx.state==='suspended') audioCtx.resume().catch(()=>{}); playBufferLooped(audioBuffer,{playbackRate:0.88}); }, stopMusic:function(){ stopBgImmediate(); }, isPlaying:()=>isBgPlaying };
+  bgFileInput.addEventListener('change', ()=>{ const f = bgFileInput.files && bgFileInput.files[0]; if(!f) return; if(bgObjectURL){ URL.revokeObjectURL(bgObjectURL); bgObjectURL = null; } bgObjectURL = URL.createObjectURL(f); fetch(bgObjectURL).then(r=>r.arrayBuffer()).then(buf=>{ ensureAudioContext(); audioCtx.decodeAudioData(buf, decoded=>{ audioBuffer = decoded; if(isBgPlaying){ stopBgImmediate(); window.__ff_bg.startMusic(); } }); }).catch(err=>{ console.error('BG load failed', err); }); });
+  bgPlayBtn.addEventListener('click', ()=>{ if(audioLockedAfterHit) return; if(!audioBuffer){ tryLoadDefault(); return; } ensureAudioContext(); audioCtx.resume().then(()=>{ window.__ff_bg.startMusic(); }).catch(()=>{ window.__ff_bg.startMusic(); }); });
+  bgStopBtn.addEventListener('click', ()=>{ window.__ff_bg.stopMusic(); });
+
+  function spawnPipe(){
+    const gapH = gapSize;
+    const minY = 40;
+    const maxY = Math.max(minY, H - 40 - gapH);
+    const gapY = Math.floor(minY + Math.random()*(maxY - minY + 1));
+    const w = Math.max(64, Math.floor(W*0.08));
+    pipes.push({ x: W + Math.max(120, START_X + 160), w, gapY, gapH, passed:false });
+    if(Math.random() < 0.85){
+      const cx = W + Math.max(120, START_X + 160) + w/2;
+      const cy = gapY + gapH*0.5 + rand(-20,20);
+      coins.push({ x:cx, y:cy, r:14, vy:-0.2 + Math.random()*0.4, spin:Math.random()*Math.PI*2 });
+    }
+  }
+
+  function circleRectCollides(circ, rect){
+    const cx = circ.x, cy = circ.y, r = circ.r;
+    const nx = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+    const ny = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+    const dx = cx - nx, dy = cy - ny;
+    return (dx*dx + dy*dy) < (r*r);
+  }
+
+  function update(){
+    if(!playing) return;
+    player.vy += player.gravity; player.y += player.vy;
+    if(player.y + player.h/2 >= H){
+      playing = false;
+      // attempt hit then lock & stop
+      try{ hitSound.currentTime = 0; hitSound.play().catch(()=>{}); }catch(e){} 
+      safeStop(flapSound);
+      window.__ff_bg.stopMusic();
+      audioLockedAfterHit = true;
+      showGameOverOverlay();
+      gameOver(); return;
+    }
+    if(player.y - player.h/2 <= 0){ player.y = player.h/2; player.vy = 0; }
+    pipeTimer++; if(pipeTimer > pipeInterval){ spawnPipe(); pipeTimer = 0; }
+    for(let i=pipes.length-1;i>=0;i--){
+      const p = pipes[i]; p.x -= pipeSpeed;
+      if(!p.passed && p.x + p.w < player.x - player.w/2){ p.passed=true; score++; document.getElementById('score').textContent = score; safePlay(flapSound); if(score>best){ best=score; localStorage.setItem(bestKey,''+best); document.getElementById('best').textContent = best; } }
+      const topRect = {x:p.x,y:0,w:p.w,h:p.gapY}; const botRect = {x:p.x,y:p.gapY+p.gapH,w:p.w,h:H-(p.gapY+p.gapH)};
+      const playerRect = {x:player.x-player.w/2,y:player.y-player.h/2,w:player.w,h:player.h};
+      if(rectsOverlap(topRect,playerRect) || rectsOverlap(botRect,playerRect)){
+        const margin = 6; const collidedTop = (playerRect.y < topRect.h - margin); const collidedBottom = (playerRect.y + playerRect.h > botRect.y + margin);
+        if(collidedTop || collidedBottom){
+          playing = false;
+          try{ hitSound.currentTime = 0; hitSound.play().catch(()=>{}); }catch(e){}
+          safeStop(flapSound); window.__ff_bg.stopMusic(); audioLockedAfterHit = true;
+          showGameOverOverlay();
+          gameOver();
+          return;
+        }
+      }
+      if(p.x + p.w < -150) pipes.splice(i,1);
+    }
+    for(let i=coins.length-1;i>=0;i--){
+      const c=coins[i]; c.x -= pipeSpeed; c.y += Math.sin((performance.now()/350)+c.spin)*0.18 + c.vy; c.spin+=0.06;
+      const circ={x:c.x,y:c.y,r:c.r}; const playerRect={x:player.x-player.w/2,y:player.y-player.h/2,w:player.w,h:player.h};
+      if(circleRectCollides(circ,playerRect)){ coins.splice(i,1); coinsCollected++; document.getElementById('coins').textContent = coinsCollected; score++; document.getElementById('score').textContent = score; safePlay(flapSound); if(score>best){ best=score; localStorage.setItem(bestKey,''+best); document.getElementById('best').textContent = best; } continue; }
+      if(c.x + c.r < -80) coins.splice(i,1);
+    }
+    for(const c of clouds){ c.x += c.spd; if(c.x - c.w > W) c.x = -c.w - Math.random()*180; }
+  }
+
+  function gameOver(){ setTimeout(()=>{ /* small delay already shows overlay */ },120); }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    if(bgImg && bgImg.complete && assetsReady.bg){ try{ ctx.drawImage(bgImg,0,0,W,H); }catch(e){} } else { const sky = ctx.createLinearGradient(0,0,0,H); sky.addColorStop(0,'#cdeeff'); sky.addColorStop(1,'#7fc7ef'); ctx.fillStyle=sky; ctx.fillRect(0,0,W,H); ctx.fillStyle='#15424f'; for(let i=0;i<W;i+=120){ const hh=40+Math.floor((Math.sin(i*0.02+performance.now()/5000)+1)*30); ctx.fillRect(i,H-36-hh,80,hh); } }
+    ctx.fillStyle='rgba(255,255,255,0.92)'; for(const c of clouds){ ctx.beginPath(); ctx.ellipse(c.x,c.y,c.w/2,c.h/2,0,0,Math.PI*2); ctx.fill(); }
+    for(const p of pipes){ ctx.fillStyle='#17944a'; ctx.fillRect(p.x,0,p.w,p.gapY); ctx.fillStyle='#126f36'; ctx.fillRect(p.x-2,p.gapY-12,p.w+4,12); ctx.fillStyle='#17944a'; ctx.fillRect(p.x,p.gapY+p.gapH,p.w,H-(p.gapY+p.gapH)); ctx.fillStyle='#126f36'; ctx.fillRect(p.x-2,p.gapY+p.gapH,p.w+4,12); }
+    for(const c of coins) drawCoin(c.x,c.y,c.r,c.spin);
+    ctx.fillStyle='#3ed06b'; ctx.fillRect(0,H-24,W,24);
+    if(birdImg && birdImg.complete && assetsReady.bird){ try{ ctx.save(); ctx.translate(player.x,player.y); const ang=clamp(player.vy/12,-0.45,0.6); ctx.rotate(ang); ctx.drawImage(birdImg,-player.w/2,-player.h/2,player.w,player.h); ctx.restore(); }catch(e){ drawFallbackPlayer(); } } else { drawFallbackPlayer(); }
+  }
+
+  function drawFallbackPlayer(){ ctx.save(); ctx.translate(player.x,player.y); const ang=clamp(player.vy/12,-0.45,0.6); ctx.rotate(ang); ctx.fillStyle='#ffd95a'; ctx.beginPath(); ctx.ellipse(0,0,player.w/2,player.h/2,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#000'; ctx.beginPath(); ctx.arc(player.w*0.08,-player.h*0.16,Math.max(2,Math.round(player.w*0.06)),0,Math.PI*2); ctx.fill(); ctx.restore(); }
+
+  function drawCoin(x,y,r,spin){ const grad=ctx.createRadialGradient(x-r*0.2,y-r*0.3,r*0.1,x,y,r); grad.addColorStop(0,'#fff9d6'); grad.addColorStop(0.4,'#ffe97b'); grad.addColorStop(1,'#f0b90f'); ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.ellipse(x-r*0.18,y-r*0.28,r*0.45,r*0.22,-0.5,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.07)'; ctx.lineWidth=1; ctx.stroke(); }
+
+  function flap(){ if(!playing){ startGame(); return; } player.vy = player.jump; if(!audioLockedAfterHit) safePlay(flapSound); }
+  window.addEventListener('keydown', e=>{ if(e.code==='Space' || e.code==='ArrowUp'){ e.preventDefault(); flap(); } });
+  window.addEventListener('mousedown', flap);
+  window.addEventListener('touchstart', function(e){ e.preventDefault(); flap(); }, {passive:false});
+
+  function loop(){ animId = requestAnimationFrame(loop); update(); draw(); if(!playing){ cancelAnimationFrame(animId); animId = null; } }
+
+  startBtn.addEventListener('click', ()=>{ startGame(); });
+  pauseBtn.addEventListener('click', ()=>{ playing = false; });
+  downloadBtn.addEventListener('click', ()=>{ const blob=new Blob([document.documentElement.outerHTML],{type:'text/html'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='flappy-mal-overlays.html'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); });
+
+  introStartBtn.addEventListener('click', ()=>{ // hide intro & start
+    introOverlay.style.display = 'none';
+    startGame();
+  });
+
+  playAgainBtn.addEventListener('click', ()=>{
+    hideGameOverOverlay();
+    startGame();
+  });
+
+  function showGameOverOverlay(){
+    // set Malayalam game over text with current score
+    gameOverScore.textContent = 'നിങ്ങളുടെ സ്കോർ: ' + score;
+    // if gameover image exists (img element will show), good — otherwise it will be hidden by onerror
+    gameOverOverlay.style.display = 'flex';
+  }
+  function hideGameOverOverlay(){ gameOverOverlay.style.display = 'none'; }
+
+  // Background music UI wiring (already defined above) reused:
+  // ... (listeners for bgFileInput/bgPlayBtn/bgStopBtn already set earlier)
+  // (we already wired them at declaration time)
+
+  function startGame(){
+    // reset audio locks and stop/rewind any playing sounds
+    audioLockedAfterHit = false;
+    safeStop(flapSound); try{ hitSound.pause(); hitSound.currentTime = 0;}catch(e){}
+    window.__ff_bg.stopMusic && window.__ff_bg.stopMusic();
+    // hide overlays
+    introOverlay.style.display = 'none';
+    hideGameOverOverlay();
+    // reset gameplay
+    pipes = []; coins = []; pipeTimer = 0; score = 0; coinsCollected = 0;
+    document.getElementById('score').textContent = 0;
+    document.getElementById('coins').textContent = 0;
+    player.x = START_X; player.y = H/2; player.vy = 0;
+    pipeInterval = 150; pipeSpeed = 2.1; gapSize = Math.round(H*0.42);
+    playing = true;
+    if(!audioLockedAfterHit){ window.__ff_bg.startMusic && window.__ff_bg.startMusic(); }
+    if(!animId) loop();
+  }
+
+  // initial demo pipe
+  function spawnInitial(){ pipes.push({ x: W + Math.max(120, START_X + 160), w: Math.max(64, Math.floor(W*0.08)), gapY: Math.round(H*0.28), gapH: gapSize, passed:false }); }
+  spawnInitial();
+  draw();
+
+  // Expose helpers for debugging
+  window.__ff = { safePlay, safeStop, startGame, flap, assetsReady };
+
+})();
+</script>
+</body>
+</html>
