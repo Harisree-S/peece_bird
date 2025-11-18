@@ -320,7 +320,10 @@
 
   function drawCoin(x,y,r,spin){ const grad=ctx.createRadialGradient(x-r*0.2,y-r*0.3,r*0.1,x,y,r); grad.addColorStop(0,'#fff9d6'); grad.addColorStop(0.4,'#ffe97b'); grad.addColorStop(1,'#f0b90f'); ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.ellipse(x-r*0.18,y-r*0.28,r*0.45,r*0.22,-0.5,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.07)'; ctx.lineWidth=1; ctx.stroke(); }
 
-  function flap(){ if(!playing){ startGame(); return; } player.vy = player.jump; if(!audioLockedAfterHit) safePlay(flapSound); }
+  function flap(){    if(!playing) return;
+
+    player.vy = player.jump;
+    if(!audioLockedAfterHit) safePlay(flapSound); }
 
   // Use pointerdown on the canvas — works for touch, mouse, stylus and is more reliable on mobile.
   canvas.addEventListener('pointerdown', function (e) {
