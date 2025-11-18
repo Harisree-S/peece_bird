@@ -135,7 +135,7 @@
   const bgImg = new Image(); bgImg.src = 'bg.png';
   const birdImg = new Image(); birdImg.src = 'bird.png';
 
-  // AUDIO DEFINITIONS
+  // AUDIO DEFINITIONS (HTMLAudio fallback objects kept)
   const flapSound = new Audio('flap.mp3'); flapSound.preload = 'auto';
   const hitSound  = new Audio('hit.mp3');  hitSound.preload  = 'auto';
   const coinSound = new Audio('coin.mp3'); coinSound.preload = 'auto';
@@ -220,9 +220,7 @@
     if(audioBuffer){
       return resumePromise.then(()=>{ playBufferLooped(audioBuffer,{playbackRate:0.88}); return Promise.resolve(); });
     }
-    return resumePromise.then(()=> tryLoadDefault().then(()=>{
-      if(audioBuffer) playBufferLooped(audioBuffer,{playbackRate:0.88});
-    }));
+    return resumePromise.then(()=> tryLoadDefault().then(()=>{ if(audioBuffer) playBufferLooped(audioBuffer,{playbackRate:0.88}); }));
   }
 
   // Mobile unlock helper: resume audio context, play a tiny silent buffer, then decode/play bg buffer
@@ -255,16 +253,83 @@
       }
 
       // decode the default bg file (in user gesture)
-      return tryLoadDefault().then(()=>{
-        if (audioBuffer) {
-          try { playBufferLooped(audioBuffer, { playbackRate: 0.88 }); } catch(e){}
-        }
-      }).catch(()=>{ /* ignore */ });
+      return tryLoadDefault().then(()=>{ if (audioBuffer) { try { playBufferLooped(audioBuffer, { playbackRate: 0.88 }); } catch(e){} } }).catch(()=>{ /* ignore */ });
     });
   }
 
+  //
+  // --- SFX via WebAudio (low latency) + fallback to HTMLAudio
+  //
+  const sfxFiles = { flap: 'flap.mp3', hit: 'hit.mp3', coin: 'coin.mp3' };
+  const sfxBuffers = { flap: null, hit: null, coin: null };
+  let sfxGain = null;
+
+  function ensureSfxGain(){
+    if(!audioCtx) ensureAudioContext();
+    if(!sfxGain){
+      sfxGain = audioCtx.createGain();
+      sfxGain.gain.value = 0.9;
+      sfxGain.connect(audioCtx.destination);
+    }
+  }
+
+  function decodeSfxFile(key){
+    if(!sfxFiles[key]) return Promise.reject('no key');
+    return fetch(sfxFiles[key]).then(r=>{
+      if(!r.ok) throw new Error('sfx fetch failed');
+      return r.arrayBuffer();
+    }).then(arrayBuf=>{
+      ensureAudioContext();
+      return new Promise((resolve, reject) => {
+        audioCtx.decodeAudioData(arrayBuf, decoded=>{
+          sfxBuffers[key] = decoded;
+          resolve(decoded);
+        }, err=>{
+          reject(err);
+        });
+      });
+    });
+  }
+
+  function preloadAllSfx(){
+    try { ensureAudioContext(); } catch(e) { /* ignore */ }
+    const promises = Object.keys(sfxFiles).map(k => {
+      return decodeSfxFile(k).catch(err=>{
+        console.warn('SFX decode failed for', k, err);
+        return null;
+      });
+    });
+    return Promise.all(promises).then(()=>{ try { ensureSfxGain(); } catch(e){} });
+  }
+
+  function playSfx(key){
+    try {
+      if(audioLockedAfterHit) return;
+      if(audioCtx && sfxBuffers[key]){
+        ensureSfxGain();
+        const src = audioCtx.createBufferSource();
+        src.buffer = sfxBuffers[key];
+        src.connect(sfxGain);
+        try { src.start(0); } catch(e){}
+        return;
+      }
+    } catch(e){ /* ignore and fallback */ }
+
+    // fallback
+    try {
+      if(key === 'flap') safePlay(flapSound);
+      else if(key === 'hit') { try{ hitSound.currentTime = 0; hitSound.play().catch(()=>{}); }catch(e){} }
+      else if(key === 'coin') safePlay(coinSound, 'coin');
+    } catch(e){}
+  }
+  //
+  // --- end SFX section
+  //
+
   // Start a best-effort early load (will likely fail on mobile until user gesture)
   tryLoadDefault().catch(()=>{ /* ignore early load failures */ });
+  // best-effort preload sfx (may fail until user gesture)
+  preloadAllSfx().catch(()=>{/* ignore */});
 
   window.__ff_bg = {
     startMusic:function(){ ensureBgReadyAndPlay().catch(()=>{}); },
@@ -303,7 +368,8 @@
     player.vy += player.gravity; player.y += player.vy;
     if(player.y + player.h/2 >= H){
       playing = false;
-      try{ hitSound.currentTime = 0; hitSound.play().catch(()=>{}); }catch(e){}
+      // low-latency hit playback
+      playSfx('hit');
       safeStop(flapSound);
       window.__ff_bg.stopMusic();
       audioLockedAfterHit = true;
@@ -314,14 +380,21 @@
     pipeTimer++; if(pipeTimer > pipeInterval){ spawnPipe(); pipeTimer = 0; }
     for(let i=pipes.length-1;i>=0;i--){
       const p = pipes[i]; p.x -= pipeSpeed;
-      if(!p.passed && p.x + p.w < player.x - player.w/2){ p.passed=true; score++; document.getElementById('score').textContent = score; safePlay(flapSound); if(score>best){ best=score; localStorage.setItem(bestKey,''+best); document.getElementById('best').textContent = best; } }
+      if(!p.passed && p.x + p.w < player.x - player.w/2){
+        p.passed=true;
+        score++;
+        document.getElementById('score').textContent = score;
+        // flap sound when passing a pipe (low latency)
+        playSfx('flap');
+        if(score>best){ best=score; localStorage.setItem(bestKey,''+best); document.getElementById('best').textContent = best; }
+      }
       const topRect = {x:p.x,y:0,w:p.w,h:p.gapY}; const botRect = {x:p.x,y:p.gapY+p.gapH,w:p.w,h:H-(p.gapY+p.gapH)};
       const playerRect = {x:player.x-player.w/2,y:player.y-player.h/2,w:player.w,h:player.h};
       if(rectsOverlap(topRect,playerRect) || rectsOverlap(botRect,playerRect)){
         const margin = 6; const collidedTop = (playerRect.y < topRect.h - margin); const collidedBottom = (playerRect.y + playerRect.h > botRect.y + margin);
         if(collidedTop || collidedBottom){
           playing = false;
-          try{ hitSound.currentTime = 0; hitSound.play().catch(()=>{}); }catch(e){}
+          playSfx('hit');
           safeStop(flapSound); window.__ff_bg.stopMusic(); audioLockedAfterHit = true;
           showGameOverOverlay();
           gameOver();
@@ -339,7 +412,8 @@
         document.getElementById('coins').textContent = coinsCollected;
         score++;
         document.getElementById('score').textContent = score;
-        safePlay(coinSound, 'coin');
+        // coin sound low latency
+        playSfx('coin');
         if(score>best){ best=score; localStorage.setItem(bestKey,''+best); document.getElementById('best').textContent = best; }
         continue;
       }
@@ -364,10 +438,11 @@
 
   function drawCoin(x,y,r,spin){ const grad=ctx.createRadialGradient(x-r*0.2,y-r*0.3,r*0.1,x,y,r); grad.addColorStop(0,'#fff9d6'); grad.addColorStop(0.4,'#ffe97b'); grad.addColorStop(1,'#f0b90f'); ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.ellipse(x-r*0.18,y-r*0.28,r*0.45,r*0.22,-0.5,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.07)'; ctx.lineWidth=1; ctx.stroke(); }
 
-  function flap(){    if(!playing) return;
-
+  function flap(){    
+    if(!playing) return;
     player.vy = player.jump;
-    if(!audioLockedAfterHit) safePlay(flapSound); }
+    if(!audioLockedAfterHit) playSfx('flap');
+  }
 
   // Use pointerdown on the canvas — works for touch, mouse, stylus and is more reliable on mobile.
   canvas.addEventListener('pointerdown', function (e) {
@@ -432,6 +507,9 @@
       // ignore errors
     }
 
+    // ensure SFX decoded (in user gesture) for minimal latency
+    preloadAllSfx().catch(()=>{/* ignore */});
+
     // Start BG music if possible — using the unlock helper (best chance on mobile)
     if(!audioLockedAfterHit){
       unlockAudioContextAndPlayBg().catch(()=>{ /* fail silently */ });
@@ -447,7 +525,7 @@
   draw();
 
   // Expose helpers for debugging
-  window.__ff = { safePlay, safeStop, startGame, flap, assetsReady, ensureAudioContext };
+  window.__ff = { safePlay, safeStop, startGame, flap, assetsReady, ensureAudioContext, playSfx };
 
 })();
 </script>
