@@ -20,21 +20,26 @@
   #bg-music-ui input{font-size:12px}
   #bg-music-ui button{background:#2563eb;padding:6px 8px;border-radius:6px;font-weight:600}
   /* overlays */
-  .overlay{position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);z-index:40;pointer-events:auto}
+  .overlay{position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.65);z-index:40;pointer-events:auto}
   .overlay .panel{
     background: #000; /* pure black */
     padding:18px;
     border-radius:12px;
     box-shadow:0 8px 40px rgba(2,6,23,0.25);
     text-align:center;
-    max-width:84%;
-    width:640px;
+    max-width:92%;
+    width:720px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:12px;
+    box-sizing:border-box;
   }
-  .overlay h1{margin:0 0 8px;font-size:22px;color:#ffffff;font-weight:800}
-  .overlay p{margin:0 0 12px;font-size:18px;color:#ffffff}
+  .overlay h1{margin:0;font-size:20px;color:#ffffff;font-weight:800}
+  .overlay p{margin:0;font-size:16px;color:#ffffff}
   .gameover-image{max-width:50%;height:auto;border-radius:8px;display:block;margin:8px auto}
   .play-again{background:#ef4444;color:white;padding:10px 14px;border-radius:8px;border:none;cursor:pointer;font-weight:700}
-  @media (max-width:600px){ .overlay .panel{width:92%;padding:12px} .overlay h1{font-size:18px} .overlay p{font-size:16px} }
+  @media (max-width:600px){ .overlay .panel{width:96%;padding:12px} .overlay h1{font-size:18px} .overlay p{font-size:15px} }
   #bg-music-ui { display:none !important; }
   /* NEW BACKGROUND STYLE: a pattern or different color */
   canvas{ background: linear-gradient(180deg, #87cefa, #00bfff); }
@@ -72,22 +77,73 @@
     font-size: 13px;
   }
 
-  /* Secret overlay styles (similar to other overlays but slightly different z-index) */
+  /* Secret overlay styles (fitting image, header visible, restart at bottom center) */
   #secretOverlay { display: none; z-index: 10000; }
-  #secretOverlay .panel { max-width: 520px; width: 92%; padding: 16px; }
-  /* reduced image size so it never dominates the overlay */
-  #secretOverlay img {
-    display: block;
-    margin: 8px auto;
-    width: 100%;
-    max-width: 320px;   /* maximum width */
-    max-height: 360px;  /* cap height */
-    object-fit: contain; 
-    border-radius: 8px;
+
+/* SECRET OVERLAY → SAME SIZE AS GAME OVER OVERLAY */
+#secretOverlay .panel {
+  background:#000;
+  padding:18px;
+  border-radius:12px;
+  box-shadow:0 8px 40px rgba(2,6,23,0.25);
+  text-align:center;
+  max-width:84%;
+  width:640px;      /* same width as game over */
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:12px;
+}
+
+/* Title text */
+#secretOverlay h1 {
+  margin:0 0 8px;
+  font-size:22px;
+  color:#fff;
+  font-weight:800;
+}
+
+/* Wrap image so it centers nicely */
+#secretOverlay .imgWrap {
+  width:100%;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+
+/* SECRET IMAGE — Same behavior as gameover.png */
+#secretOverlay img {
+  max-width:50%;     /* same as gameover-image */
+  height:auto;
+  border-radius:8px;
+  display:block;
+}
+
+/* Restart button centered at bottom */
+#secretRestart {
+  background:#ef4444;
+  color:white;
+  padding:10px 14px;
+  border-radius:8px;
+  border:none;
+  cursor:pointer;
+  font-weight:700;
+  margin-top:8px;
+  align-self:center;   /* centers horizontally */
+}
+
+/* Mobile adjustments same as game overlay */
+@media (max-width:600px){
+  #secretOverlay .panel{
+    width:92%;
+    padding:12px;
   }
-  #secretControls { display:flex; gap:8px; justify-content:center; margin-top:8px; }
-  #secretClose { background:#374151; padding:8px 10px; border-radius:8px; color:#fff; border:none; cursor:pointer; }
-  #secretRestart { background:#10b981; padding:8px 10px; border-radius:8px; color:#fff; border:none; cursor:pointer; }
+  #secretOverlay h1{
+    font-size:18px;
+  }
+}
+
+
 </style>
 </head>
 <body>
@@ -122,20 +178,19 @@
       </div>
     </div>
 
-    <!-- SECRET overlay (shown when typing the code) -->
+    <!-- SECRET overlay (shown when typing the code) - header, fitted image, centered restart button -->
     <div id="secretOverlay" class="overlay" style="pointer-events:auto">
       <div class="panel">
         <h1>Cheating STAR e ollu, ഓഡ്രാ</h1>
-        <!-- change 'leave_pc.png' to your preferred image filename -->
-        <img id="secretImg" src="leave_pc.png" alt="Leave PC alone" onerror="this.style.display='none'">
-        <div id="secretControls">
-          <button id="secretRestart">Restart Game</button>
-          <button id="secretClose">Close</button>
+        <div class="imgWrap">
+          <!-- change 'leave_pc.png' to your preferred image filename -->
+          <img id="secretImg" src="leave_pc.png" alt="Leave PC alone" onerror="this.style.display='none'">
         </div>
+        <button id="secretRestart">Restart Game</button>
       </div>
     </div>
 
-    <div class="controls" style="position:relative;z-index:10;margin-top:20px">
+    <div class="controls" style="position:relative;z-index:10;margin-top:12px">
       <div style="display:flex;gap:8px;align-items:center">
         <button id="start">Start</button>
         <button id="pause">Pause</button>
@@ -162,7 +217,6 @@
   const secretBtn = document.getElementById('secretBtn');
   const secretOverlay = document.getElementById('secretOverlay');
   const secretRestart = document.getElementById('secretRestart');
-  const secretClose = document.getElementById('secretClose');
 
   // new secret music audio (looping). Place secret_music.mp3 next to this HTML or change filename.
   const secretMusic = new Audio('secret_music.mp3');
@@ -205,13 +259,11 @@
 
   // secret overlay actions
   secretRestart.addEventListener('click', ()=> {
+    // stop secret music, hide overlay and restart the game using existing startGame()
+    try { secretMusic.pause(); secretMusic.currentTime = 0; } catch(e) {}
     hideSecretOverlay();
     hideGameOverOverlay();
-    // use same restart behavior as Play Again
     startGame();
-  });
-  secretClose.addEventListener('click', ()=> {
-    hideSecretOverlay();
   });
 
   /* ------------------ existing game code below (unchanged logic, integrated) ------------------ */
